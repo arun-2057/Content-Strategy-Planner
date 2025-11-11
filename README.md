@@ -52,7 +52,8 @@ cd backend
 python -m venv .venv
 source .venv/bin/activate   # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000 ```
+uvicorn app.main:app --reload --port 8000
+```
 
 ### 🎨 Frontend Setup
 ```bash
@@ -62,7 +63,8 @@ npm run dev
 
 
 Then open:
-👉 http://localhost:5173```
+👉 http://localhost:5173
+```
 
 ## 🔑 Environment Variables
 
