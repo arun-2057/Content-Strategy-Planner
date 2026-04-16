@@ -1,10 +1,16 @@
 import os
 import asyncio
+import hashlib
+import time
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+
+# Simple in-memory cache for generated plans
+_plan_cache = {}
+_CACHE_TTL_SECONDS = 3600  # 1 hour
 
 # Lazy import of google SDK when key present
 genai = None
@@ -17,21 +23,37 @@ if GOOGLE_API_KEY:
         print("Warning: google-generativeai import failed or config failed:", e)
         genai = None
 
+def _get_cache_key(topic: str) -> str:
+    """Generate a cache key from the topic."""
+    return hashlib.sha256(topic.lower().strip().encode()).hexdigest()
+
 async def generate_content_plan(topic: str) -> dict:
     """
     Returns a dict: { planner: <string> }
       - If real AI available, returns AI text.
       - Otherwise returns a stubbed planner string.
+      - Results are cached for 1 hour to improve performance.
     """
+    topic_clean = topic.strip()
+    cache_key = _get_cache_key(topic_clean)
+    
+    # Check cache first
+    if cache_key in _plan_cache:
+        cached_result, timestamp = _plan_cache[cache_key]
+        if time.time() - timestamp < _CACHE_TTL_SECONDS:
+            return {"planner": cached_result}
+        else:
+            del _plan_cache[cache_key]
+    
     if genai:
         # Run blocking SDK call in threadpool to avoid blocking event loop
         loop = asyncio.get_event_loop()
         def call_ai():
-            # prefer a supported model resource name
-            model_name = "models/gemini-2.5-flash"
+            # Use a stable, supported model resource name
+            model_name = "models/gemini-1.5-flash"
             model = genai.GenerativeModel(model_name)
             prompt = (
-                f"Create a complete content planner for the topic '{topic}'. "
+                f"Create a complete content planner for the topic '{topic_clean}'. "
                 "Include Objective, Target Audience, Key Messages, Content Formats (blogs, videos, infographics), "
                 "SEO Strategy (primary & secondary keywords), a 4-week content calendar with publishing frequency, "
                 "promotion strategy (social, email, partnerships), and KPIs. Structure with clear sections and bullet points."
@@ -42,14 +64,20 @@ async def generate_content_plan(topic: str) -> dict:
             return text
         try:
             ai_text = await loop.run_in_executor(None, call_ai)
+            # Cache the result
+            _plan_cache[cache_key] = (ai_text, time.time())
             return {"planner": ai_text}
         except Exception as e:
             # if API fails, fallback to stub and log
             print("AI call failed, falling back to stub:", e)
-            return {"planner": _stub_planner(topic)}
+            stub = _stub_planner(topic_clean)
+            _plan_cache[cache_key] = (stub, time.time())
+            return {"planner": stub}
     else:
         # No key or SDK - return a stub
-        return {"planner": _stub_planner(topic)}
+        stub = _stub_planner(topic_clean)
+        _plan_cache[cache_key] = (stub, time.time())
+        return {"planner": stub}
 
 def _stub_planner(topic: str) -> str:
     """Return a deterministic content planner string for dev/demo."""

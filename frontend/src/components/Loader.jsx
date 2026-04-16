@@ -1,3 +1,7 @@
 export default function Loader() {
-  return <div className="w-5 h-5 border-4 border-white border-t-transparent rounded-full animate-spin"></div>;
+  return (
+    <div className="relative">
+      <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
+    </div>
+  );
 }
